@@ -69,16 +69,12 @@ class SokobanSolver(object):
             for c2 in range(c1 + 1, len(self.coords)):
                 theory.writeClause([self.neg(self.player(self.coords[c1], step)), self.neg(self.player(self.coords[c2], step))])
 
-    def encode_player_box_pos(self, theory, step):
-        theory.writeComment('na jednej pozicii moze byt bud player alebo nejaky box')
-        theory.writeComment('-(player(XY, s) and at(box_id, XY, s))')
+    def encode_position_exclusivity(self, theory, step):
+        for XY in self.coords:
+            theory.writeClause([self.neg(self.player(XY, step)), self.neg(self.empty(XY, step))])
         for box_id in range(len(self.map_data['boxes'])):
-            for x in range(self.map_data['map_size'][0]):
-                for y in range(self.map_data['map_size'][1]):
-                    theory.writeClause([
-                        '-player({}_{},{})'.format(x,y,step),
-                        '-at(box{},{}_{},{})'.format(box_id+1,x,y,step)
-                    ])
+                theory.writeClause([self.neg(self.player(XY, step)), self.neg(self.at(box_id+1, XY, step))])
+                theory.writeClause([self.neg(self.empty(XY, step)), self.neg(self.at(box_id+1, XY, step))])
 
     def encode_action_move(self, theory, step):
         theory.writeComment('Action move(fromXY, toXY, step)')
