@@ -38,7 +38,7 @@ class SokobanSolver(object):
                 for box_id in range(len(self.map_data['boxes'])):
                     clause.append(self.at(box_id+1, XY, step))
                 theory.writeClause(clause)
-            theory.writeComment('ak je box v cieli tak je na pozicii ktora je oznacena ako target')
+            theory.writeComment('Ak je box v cieli tak je na pozicii ktora je oznacena ako ciel')
             theory.writeComment('in_target(box,s) -> (at(box,XY,s) and target(XY))')
             for box_id in range(len(self.map_data['boxes'])):
                 for XY in self.coords:
