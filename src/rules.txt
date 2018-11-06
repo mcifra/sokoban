@@ -1,0 +1,20 @@
+1 Na policku mozu byt hrac, nic, box
+  player(XY,step) or empty(XY,step) or at(box_id,XY,step)
+
+2 Hrac moze byt iba na jednom mieste
+  -(player(XY1,step) and player(XY2,step))
+
+3 Box moze byt iba na jednom mieste
+  -(at(box_id,XY1,step) and at(box_id,XY2,step))
+
+4 Na policku musi byt maximalne iba bud hrac, nic, box
+  -(player(XY,step) and empty(XY,step)) -(player(XY,step) and at(box_id,XY,step)) -(empty(XY,step) and at(box_id,XY,step))
+
+5 Ak je box v cieli, tak je na policku oznacenom ako ciel
+  in_target(box_id,step) -> (at(box_id,XY,step) and target(XY))
+
+6 Vykonanie aspon jednej akcie
+  move(00,01) or move(00,02) or ... or push() or ... or push_t()
+
+7 Vykonat sa musi najviac jedna akcia
+  -move(00,01) or -move(00,02)
