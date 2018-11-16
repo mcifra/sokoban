@@ -60,6 +60,10 @@ def translate(inf, outf):
         # dicts are hashed, so 'normal' order is not very nice
         for num, var in sorted([(num,var) for var,num in varMap.items()]):
             f.write('c %5d %s\n' % (num, var))
+    with open('variables.txt', 'w') as f:
+        # dicts are hashed, so 'normal' order is not very nice
+        for num, var in sorted([(num,var) for var,num in varMap.items()]):
+            f.write('%d\n%s\n' % (num, var))
 
 
 if __name__ == '__main__':
