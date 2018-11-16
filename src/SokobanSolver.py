@@ -2,7 +2,6 @@ import subprocess
 from lib.theoryWriter import TheoryWriter
 import lib.text2dimacs
 
-
 class SokobanSolver(object):
 
     MINISAT_PATH = 'lib/minisat/win/minisat.exe'
@@ -41,12 +40,12 @@ class SokobanSolver(object):
     def spracuj(self):
         line = ''
         with open(self.MINISAT_OUT_FILE) as f:
-            sat = f.readline()
-            line = f.readline()
+            sat = f.readline().strip()
             if sat == 'UNSAT':
                 return (False, [])
-        line = line.strip().split()
-        variables = {}
+            line = f.readline().strip()
+        minisat_vars = line.split()
+        predicates = {}
         var = 0
         res = []
         with open(self.DIMACS_VARS_FILE) as f:
@@ -54,343 +53,275 @@ class SokobanSolver(object):
                 if var == 0:
                     var = int(l)
                 else:
-                    variables[var] = l.strip()
+                    predicates[var] = l.strip()
                     var = 0
-        for l in line:
-            x = int(l)
-            if x > 0:
-                pred = variables.get(x, 'null')
-                res.append(pred)
+        for v in minisat_vars:
+            v_int = int(v)
+            if v_int > 0:
+                pred = predicates.get(v_int, 'null')
+                if (pred.startswith('move') or pred.startswith('push') or pred.startswith('push_t')):
+                    res.append(pred)
         return (True, res)
 
     def encode(self, theory, iteration):
+        self.encode_goal(theory, iteration)
         self.encodeInitState(theory)
-        self.encodeGoal(theory, iteration)
         theory.writeComment('RULES')
         for step in range(1, iteration + 1):
-            theory.writeComment(
-                'Na jednom policku moze byt bud hrac alebo nic alebo nejaky z boxov')
-
-            # for XY in self.coords:
-            #     if XY not in self.map_data['walls']:
-            #         theory.writeLiteral(self.player(XY, step))
-            # theory.finishClause()
-
-            # for box_id in range(len(self.map_data['boxes'])):
-            #     for XY in self.coords:
-            #         if XY not in self.map_data['walls']:
-            #             theory.writeLiteral(self.at(box_id+1, XY, step))
-            # theory.finishClause()
-
-            theory.writeComment(
-                'empty(XY, state) or player(XY, state) or at(box_id, XY, state)')
+            theory.writeComment('Na jednom policku moze byt bud hrac alebo nic alebo nejaky z boxov')
+            theory.writeComment('Na polickach kde je stena nemoze byt hrac ani box - su stale ne-prazdne')
             for XY in self.coords:
-                if XY not in self.map_data['walls']:
+                if self.not_wall(XY):
                     clause = [self.empty(XY, step), self.player(XY, step)]
                     for box_id in range(len(self.map_data['boxes'])):
                         clause.append(self.at(box_id+1, XY, step))
                     theory.writeClause(clause)
                 else:
                     theory.writeClause([self.neg(self.empty(XY, step))])
+            self.player_exlusivity(theory, step)
+            self.box_exclusivity(theory, step)
+            self.position_exclusivity(theory, step)
+            self.actions(theory, step)
 
-            self.encode_player_pos(theory, step)
-            self.encode_box_pos(theory, step)
-            self.encode_position_exclusivity(theory, step)
-            self.encode_actions(theory, step)
-
-    def encode_box_pos(self, theory, step):
-        theory.writeComment(
-            'Ak je box na nejakej pozicii, nemoze byt zaroven na druhej pozicii')
+    def box_exclusivity(self, theory, step):
+        theory.writeComment('Ak je box na nejakej pozicii, nemoze byt zaroven na druhej pozicii')
         for box_id in range(len(self.map_data['boxes'])):
             for c1 in range(len(self.coords)):
                 for c2 in range(c1+1, len(self.coords)):
-                    if self.coords[c1] not in self.map_data['walls'] and self.coords[c2] not in self.map_data['walls']:
+                    if self.not_wall(self.coords[c1], self.coords[c2]):
                         theory.writeClause([
                             self.neg(self.at(box_id+1, self.coords[c1], step)),
                             self.neg(self.at(box_id+1, self.coords[c2], step))
                         ])
 
-    def encode_player_pos(self, theory, step):
-        theory.writeComment(
-            'Ak je hrac na nejakej pozicii, nemoze byt zaroven na druhej pozicii')
+    def player_exlusivity(self, theory, step):
+        theory.writeComment('Ak je hrac na nejakej pozicii, nemoze byt zaroven na druhej pozicii')
         for c1 in range(len(self.coords)):
             for c2 in range(c1 + 1, len(self.coords)):
-                if self.coords[c1] not in self.map_data['walls'] and self.coords[c2] not in self.map_data['walls']:
+                if self.not_wall(self.coords[c1], self.coords[c2]):
                     theory.writeClause([
                         self.neg(self.player(self.coords[c1], step)),
                         self.neg(self.player(self.coords[c2], step))
                     ])
 
-    def encode_position_exclusivity(self, theory, step):
-        theory.writeComment(
-            'Na jednom policku moze byt maximalne bud hrac, nic, box')
+    def position_exclusivity(self, theory, step):
+        theory.writeComment('Na jednom policku moze byt maximalne bud hrac, nic, box')
         for XY in self.coords:
-            if XY not in self.map_data['walls']:
-                theory.writeClause(
-                    [self.neg(self.player(XY, step)), self.neg(self.empty(XY, step))])
+            if self.not_wall(XY):
+                theory.writeClause([self.neg(self.player(XY, step)), self.neg(self.empty(XY, step))])
                 for box_id in range(len(self.map_data['boxes'])):
-                    theory.writeClause(
-                        [self.neg(self.player(XY, step)), self.neg(self.at(box_id+1, XY, step))])
-                    theory.writeClause([self.neg(self.empty(XY, step)),
-                                        self.neg(self.at(box_id+1, XY, step))])
+                    theory.writeClause([self.neg(self.player(XY, step)), self.neg(self.at(box_id+1, XY, step))])
+                    theory.writeClause([self.neg(self.empty(XY, step)), self.neg(self.at(box_id+1, XY, step))])
 
-    def encode_action_move(self, theory, step):
-        theory.writeComment('Action move(fromXY, toXY, step)')
-        for fromXY in self.coords:
-            for toXY in self.coords:
-                if self.is_adjacent(fromXY, toXY):
-                    if fromXY not in self.map_data['walls'] and toXY not in self.map_data['walls']:
-                        # P+
-                        theory.writeClause([
-                            self.neg(self.move(fromXY, toXY, step)),
-                            self.player(fromXY, step-1)
-                        ])
-                        theory.writeClause([
-                            self.neg(self.move(fromXY, toXY, step)),
-                            self.empty(toXY, step-1)
-                        ])
-                        # P-
-                        # for box_id in range(len(self.map_data['boxes'])):
-                        #     theory.writeClause([
-                        #         self.neg(self.move(fromXY, toXY, step)),
-                        #         self.neg(self.at(box_id+1, toXY, step-1))
-                        #     ])
-                        # theory.writeClause([
-                        #     self.neg(self.move(fromXY, toXY, step)),
-                        #     self.neg(self.player(toXY, step-1))
-                        # ])
-                        # E+
-                        theory.writeClause([
-                            self.neg(self.move(fromXY, toXY, step)),
-                            self.player(toXY, step)
-                        ])
-                        theory.writeClause([
-                            self.neg(self.move(fromXY, toXY, step)),
-                            self.empty(fromXY, step)
-                        ])
-                        # E-
-                        theory.writeClause([
-                            self.neg(self.move(fromXY, toXY, step)),
-                            self.neg(self.empty(toXY, step))
-                        ])
-                        # theory.writeClause([
-                        #     self.neg(self.move(fromXY, toXY, step)),
-                        #     self.neg(self.player(fromXY, step))
-                        # ])
-                        # theory.writeClause([
-                        #     self.neg(self.move(fromXY, toXY, step)),
-                        #     self.at(1, (1,2), step)
-                        # ])
-                        for box_id in range(len(self.map_data['boxes'])):
-                            theory.writeClause([
-                                self.neg(self.move(fromXY, toXY, step)),
-                                self.neg(self.in_target(box_id+1, step))
-                            ])
-                        # for box_id in range(len(self.map_data['boxes'])):
-                        #     theory.writeClause([
-                        #         self.neg(self.move(fromXY, toXY, step)),
-                        #         self.neg(self.at(box_id+1, fromXY, step))
-                        #     ])
-
-    def encode_action_push(self, theory, step):
-        theory.writeComment('Action push(box, playerXY, fromXY, toXY, step)')
-        for box_id in range(len(self.map_data['boxes'])):
-            for playerXY in self.coords:
-                for fromXY in self.coords:
-                    for toXY in self.coords:
-                        if (self.is_inline(playerXY, fromXY, toXY) and
-                            playerXY not in self.map_data['walls'] and
-                            fromXY not in self.map_data['walls'] and
-                                toXY not in self.map_data['walls']):
-                            # P+
-                            theory.writeClause([
-                                self.neg(
-                                    self.push(box_id+1, playerXY, fromXY, toXY, step)),
-                                self.empty(toXY, step-1)
-                            ])
-                            theory.writeClause([
-                                self.neg(
-                                    self.push(box_id+1, playerXY, fromXY, toXY, step)),
-                                self.player(playerXY, step-1)
-                            ])
-                            theory.writeClause([
-                                self.neg(
-                                    self.push(box_id+1, playerXY, fromXY, toXY, step)),
-                                self.at(box_id+1, fromXY, step-1)
-                            ])
-                            # P-
-                            theory.writeClause([
-                                self.neg(
-                                    self.push(box_id+1, playerXY, fromXY, toXY, step)),
-                                self.neg(self.target(toXY))
-                            ])
-                            # E+
-                            theory.writeClause([
-                                self.neg(
-                                    self.push(box_id+1, playerXY, fromXY, toXY, step)),
-                                self.player(fromXY, step)
-                            ])
-                            theory.writeClause([
-                                self.neg(
-                                    self.push(box_id+1, playerXY, fromXY, toXY, step)),
-                                self.at(box_id+1, toXY, step)
-                            ])
-                            theory.writeClause([
-                                self.neg(
-                                    self.push(box_id+1, playerXY, fromXY, toXY, step)),
-                                self.empty(playerXY, step)
-                            ])
-                            # E-
-                            theory.writeClause([
-                                self.neg(
-                                    self.push(box_id+1, playerXY, fromXY, toXY, step)),
-                                self.neg(self.empty(toXY, step))
-                            ])
-                            theory.writeClause([
-                                self.neg(
-                                    self.push(box_id+1, playerXY, fromXY, toXY, step)),
-                                self.neg(self.player(playerXY, step))
-                            ])
-                            theory.writeClause([
-                                self.neg(
-                                    self.push(box_id+1, playerXY, fromXY, toXY, step)),
-                                self.neg(self.at(box_id+1, fromXY, step))
-                            ])
-                            theory.writeClause([
-                                self.neg(
-                                    self.push(box_id+1, playerXY, fromXY, toXY, step)),
-                                self.neg(self.in_target(box_id+1, step))
-                            ])
-                            theory.writeClause([
-                                self.neg(
-                                    self.push(box_id+1, playerXY, fromXY, toXY, step)),
-                                self.neg(self.in_target(box_id+1, step-1))
-                            ])
-
-    def encode_action_push_t(self, theory, step):
-        theory.writeComment('Action push_t(box, playerXY, fromXY, toXY, step)')
-        for box_id in range(len(self.map_data['boxes'])):
-            for playerXY in self.coords:
-                for fromXY in self.coords:
-                    for toXY in self.coords:
-                        if (self.is_inline(playerXY, fromXY, toXY) and
-                            playerXY not in self.map_data['walls'] and
-                            fromXY not in self.map_data['walls'] and
-                                toXY not in self.map_data['walls']):
-                            # P+
-                            theory.writeClause([
-                                self.neg(self.push_t(
-                                    box_id+1, playerXY, fromXY, toXY, step)),
-                                self.empty(toXY, step-1)
-                            ])
-                            theory.writeClause([
-                                self.neg(self.push_t(
-                                    box_id+1, playerXY, fromXY, toXY, step)),
-                                self.player(playerXY, step-1)
-                            ])
-                            theory.writeClause([
-                                self.neg(self.push_t(
-                                    box_id+1, playerXY, fromXY, toXY, step)),
-                                self.at(box_id+1, fromXY, step-1)
-                            ])
-                            theory.writeClause([
-                                self.neg(self.push_t(
-                                    box_id+1, playerXY, fromXY, toXY, step)),
-                                self.target(toXY)
-                            ])
-                            theory.writeClause([
-                                self.neg(
-                                    self.push(box_id+1, playerXY, fromXY, toXY, step)),
-                                self.neg(self.in_target(box_id+1, step-1))
-                            ])
-                            # E+
-                            theory.writeClause([
-                                self.neg(self.push_t(
-                                    box_id+1, playerXY, fromXY, toXY, step)),
-                                self.player(fromXY, step)
-                            ])
-                            theory.writeClause([
-                                self.neg(self.push_t(
-                                    box_id+1, playerXY, fromXY, toXY, step)),
-                                self.at(box_id+1, toXY, step)
-                            ])
-                            theory.writeClause([
-                                self.neg(self.push_t(
-                                    box_id+1, playerXY, fromXY, toXY, step)),
-                                self.empty(playerXY, step)
-                            ])
-                            theory.writeClause([
-                                self.neg(self.push_t(
-                                    box_id+1, playerXY, fromXY, toXY, step)),
-                                self.in_target(box_id+1, step)
-                            ])
-                            # E-
-                            theory.writeClause([
-                                self.neg(self.push_t(
-                                    box_id+1, playerXY, fromXY, toXY, step)),
-                                self.neg(self.empty(toXY, step))
-                            ])
-                            theory.writeClause([
-                                self.neg(self.push_t(
-                                    box_id+1, playerXY, fromXY, toXY, step)),
-                                self.neg(self.player(playerXY, step))
-                            ])
-                            theory.writeClause([
-                                self.neg(self.push_t(
-                                    box_id+1, playerXY, fromXY, toXY, step)),
-                                self.neg(self.at(box_id+1, fromXY, step))
-                            ])
-
-    def encode_actions(self, theory, step):
-        self.encode_action_move(theory, step)
-        self.encode_action_push(theory, step)
-        self.encode_action_push_t(theory, step)
+    def actions(self, theory, step):
+        self.action_move(theory, step)
+        self.action_push(theory, step)
+        self.action_push_t(theory, step)
         actions = []
         for fromXY in self.coords:
             for toXY in self.coords:
-                if (self.is_adjacent(fromXY, toXY) and
-                    fromXY not in self.map_data['walls'] and
-                        toXY not in self.map_data['walls']):
+                if self.is_adjacent(fromXY, toXY) and self.not_wall(fromXY, toXY):
                     actions.append(self.move(fromXY, toXY, step))
         for box_id in range(len(self.map_data['boxes'])):
             for playerXY in self.coords:
                 for fromXY in self.coords:
                     for toXY in self.coords:
-                        if (self.is_inline(playerXY, fromXY, toXY) and
-                            playerXY not in self.map_data['walls'] and
-                            fromXY not in self.map_data['walls'] and
-                                toXY not in self.map_data['walls']):
-                            actions.append(
-                                self.push(box_id+1, playerXY, fromXY, toXY, step))
-                            actions.append(self.push_t(
-                                box_id+1, playerXY, fromXY, toXY, step))
+                        if self.is_inline(playerXY, fromXY, toXY) and self.not_wall(playerXY, fromXY, toXY):
+                            actions.append(self.push(box_id+1, playerXY, fromXY, toXY, step))
+                            actions.append(self.push_t(box_id+1, playerXY, fromXY, toXY, step))
         theory.writeComment('At least one action happens')
         theory.writeClause(actions)
-        theory.writeComment('Action exclusivity')
+        theory.writeComment('Actions exclusivity')
         for action1 in range(len(actions)):
             for action2 in range(action1+1, len(actions)):
                 if action1 != action2:
-                    theory.writeClause(
-                        [self.neg(actions[action1]), self.neg(actions[action2])])
+                    theory.writeClause([self.neg(actions[action1]), self.neg(actions[action2])])
 
-    def encodeGoal(self, w, N):
-        w.writeComment('Goal')
-        # w.writeClause([self.player((1,3), N)])
+    def action_move(self, theory, step):
+        theory.writeComment('Action move(fromXY, toXY, step)')
+        for fromXY in self.coords:
+            for toXY in self.coords:
+                if self.is_adjacent(fromXY, toXY) and self.not_wall(fromXY, toXY):
+                    # P+
+                    theory.writeClause([
+                        self.neg(self.move(fromXY, toXY, step)),
+                        self.player(fromXY, step-1)
+                    ])
+                    theory.writeClause([
+                        self.neg(self.move(fromXY, toXY, step)),
+                        self.empty(toXY, step-1)
+                    ])
+                    # E+
+                    theory.writeClause([
+                        self.neg(self.move(fromXY, toXY, step)),
+                        self.player(toXY, step)
+                    ])
+                    theory.writeClause([
+                        self.neg(self.move(fromXY, toXY, step)),
+                        self.empty(fromXY, step)
+                    ])
+                    # E-
+                    for box_id in range(len(self.map_data['boxes'])):
+                        theory.writeClause([
+                            self.neg(self.move(fromXY, toXY, step)),
+                            self.neg(self.in_target(box_id+1, step))
+                        ])
+                    # theory.writeClause([
+                    #     self.neg(self.move(fromXY, toXY, step)),
+                    #     self.neg(self.empty(toXY, step))
+                    # ])
+                    # theory.writeClause([
+                    #     self.neg(self.move(fromXY, toXY, step)),
+                    #     self.neg(self.player(fromXY, step))
+                    # ])
+                    # for box_id in range(len(self.map_data['boxes'])):
+                    #     theory.writeClause([
+                    #         self.neg(self.move(fromXY, toXY, step)),
+                    #         self.neg(self.at(box_id+1, fromXY, step))
+                    #     ])
+
+    def action_push(self, theory, step):
+        theory.writeComment('Action push(box, playerXY, fromXY, toXY, step)')
         for box_id in range(len(self.map_data['boxes'])):
-            w.writeLiteral(self.in_target(box_id+1, N))
-            w.finishClause()
+            for playerXY in self.coords:
+                for fromXY in self.coords:
+                    for toXY in self.coords:
+                        if self.is_inline(playerXY, fromXY, toXY) and self.not_wall(playerXY, fromXY, toXY):
+                            # P+
+                            theory.writeClause([
+                                self.neg(self.push(box_id+1, playerXY, fromXY, toXY, step)),
+                                self.empty(toXY, step-1)
+                            ])
+                            theory.writeClause([
+                                self.neg(self.push(box_id+1, playerXY, fromXY, toXY, step)),
+                                self.player(playerXY, step-1)
+                            ])
+                            theory.writeClause([
+                                self.neg(self.push(box_id+1, playerXY, fromXY, toXY, step)),
+                                self.at(box_id+1, fromXY, step-1)
+                            ])
+                            # P-
+                            theory.writeClause([
+                                self.neg(self.push(box_id+1, playerXY, fromXY, toXY, step)),
+                                self.neg(self.target(toXY))
+                            ])
+                            # E+
+                            theory.writeClause([
+                                self.neg(self.push(box_id+1, playerXY, fromXY, toXY, step)),
+                                self.player(fromXY, step)
+                            ])
+                            theory.writeClause([
+                                self.neg(self.push(box_id+1, playerXY, fromXY, toXY, step)),
+                                self.at(box_id+1, toXY, step)
+                            ])
+                            theory.writeClause([
+                                self.neg(self.push(box_id+1, playerXY, fromXY, toXY, step)),
+                                self.empty(playerXY, step)
+                            ])
+                            # E-
+                            # theory.writeClause([
+                            #     self.neg(self.push(box_id+1, playerXY, fromXY, toXY, step)),
+                            #     self.neg(self.empty(toXY, step))
+                            # ])
+                            # theory.writeClause([
+                            #     self.neg(self.push(box_id+1, playerXY, fromXY, toXY, step)),
+                            #     self.neg(self.player(playerXY, step))
+                            # ])
+                            # theory.writeClause([
+                            #     self.neg(self.push(box_id+1, playerXY, fromXY, toXY, step)),
+                            #     self.neg(self.at(box_id+1, fromXY, step))
+                            # ])
+                            theory.writeClause([
+                                self.neg(self.push(box_id+1, playerXY, fromXY, toXY, step)),
+                                self.neg(self.in_target(box_id+1, step))
+                            ])
+                            theory.writeClause([
+                                self.neg(self.push(box_id+1, playerXY, fromXY, toXY, step)),
+                                self.neg(self.in_target(box_id+1, step-1))
+                            ])
+
+    def action_push_t(self, theory, step):
+        theory.writeComment('Action push_t(box, playerXY, fromXY, toXY, step)')
+        for box_id in range(len(self.map_data['boxes'])):
+            for playerXY in self.coords:
+                for fromXY in self.coords:
+                    for toXY in self.coords:
+                        if self.is_inline(playerXY, fromXY, toXY) and self.not_wall(playerXY, fromXY, toXY):
+                            # P+
+                            theory.writeClause([
+                                self.neg(self.push_t(box_id+1, playerXY, fromXY, toXY, step)),
+                                self.empty(toXY, step-1)
+                            ])
+                            theory.writeClause([
+                                self.neg(self.push_t(box_id+1, playerXY, fromXY, toXY, step)),
+                                self.player(playerXY, step-1)
+                            ])
+                            theory.writeClause([
+                                self.neg(self.push_t(box_id+1, playerXY, fromXY, toXY, step)),
+                                self.at(box_id+1, fromXY, step-1)
+                            ])
+                            theory.writeClause([
+                                self.neg(self.push_t(box_id+1, playerXY, fromXY, toXY, step)),
+                                self.target(toXY)
+                            ])
+                            theory.writeClause([
+                                self.neg(self.push_t(box_id+1, playerXY, fromXY, toXY, step)),
+                                self.neg(self.in_target(box_id+1, step-1))
+                            ])
+                            # E+
+                            theory.writeClause([
+                                self.neg(self.push_t(box_id+1, playerXY, fromXY, toXY, step)),
+                                self.player(fromXY, step)
+                            ])
+                            theory.writeClause([
+                                self.neg(self.push_t(box_id+1, playerXY, fromXY, toXY, step)),
+                                self.at(box_id+1, toXY, step)
+                            ])
+                            theory.writeClause([
+                                self.neg(self.push_t(box_id+1, playerXY, fromXY, toXY, step)),
+                                self.empty(playerXY, step)
+                            ])
+                            theory.writeClause([
+                                self.neg(self.push_t(box_id+1, playerXY, fromXY, toXY, step)),
+                                self.in_target(box_id+1, step)
+                            ])
+                            # E-
+                            for box_id2 in range(len(self.map_data['boxes'])):
+                                if box_id != box_id2:
+                                    theory.writeClause([
+                                        self.neg(self.push_t(box_id+1, playerXY, fromXY, toXY, step)),
+                                        self.neg(self.in_target(box_id2+1, step))
+                                    ])
+                            # theory.writeClause([
+                            #     self.neg(self.push_t(box_id+1, playerXY, fromXY, toXY, step)),
+                            #     self.neg(self.player(playerXY, step))
+                            # ])
+                            # theory.writeClause([
+                            #     self.neg(self.push_t(box_id+1, playerXY, fromXY, toXY, step)),
+                            #     self.neg(self.at(box_id+1, fromXY, step))
+                            # ])
+
+    def encode_goal(self, theory, N):
+        theory.writeComment('Goal')
+        theory.writeClause([self.goal(N)])
+        theory.writeComment('Goal rules')
+        for box_id in range(len(self.map_data['boxes'])):
+            clause = [self.neg(self.goal(N))]
+            for i in range(N+1):
+                clause.append(self.in_target(box_id+1, i))
+            theory.writeClause(clause)
 
     def encodeInitState(self, theory):
         theory.writeComment('Initial state loaded from the map')
         theory.writeComment('Targets on the map (fact)')
         for XY in self.coords:
             if XY in self.map_data['targets']:
-                theory.writeLiteral(self.target(XY))
+                theory.writeLiteral(self.target(XY))    
             else:
                 theory.writeLiteral(self.neg(self.target(XY)))
             theory.finishClause()
-        theory.writeComment(
-            'Initial position of the player loaded from the map')
+
+        theory.writeComment('Initial position of the player loaded from the map')
         for XY in self.coords:
             if XY == self.map_data['sokoban']:
                 theory.writeLiteral(self.player(XY, 0))
@@ -447,6 +378,9 @@ class SokobanSolver(object):
 
     def in_target(self, box_id, step):
         return 'in_target(box{},{})'.format(box_id, step)
+
+    def goal(self, N):
+        return 'goal({})'.format(N)
 
     def wall(self, XY):
         return 'wall({}_{})'.format(XY[0], XY[1])
@@ -510,6 +444,12 @@ class SokobanSolver(object):
         if c1[1] == c2[1] and c1[0] == c2[0]-1:
             return True
         return False
+
+    def not_wall(self, *coords):
+        for coord in coords:
+            if coord in self.map_data['walls']:
+                return False
+        return True
 
 
 if __name__ == "__main__":
