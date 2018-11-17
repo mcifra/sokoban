@@ -1,3 +1,9 @@
 .vscode/
 src/__pycache__/
 src/lib/__pycache__/
+
+# output files
+src/cnf.txt
+src/dimacs.txt
+src/out.txt
+src/variables.txt
