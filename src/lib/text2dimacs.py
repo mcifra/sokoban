@@ -55,11 +55,6 @@ def translate(inf, outf):
             f.write('c %s' % line)
             f.write('%s 0\n' % ' '.join([str(x) for x in clause]))
 
-        f.write('\nc Variables\n')
-
-        # dicts are hashed, so 'normal' order is not very nice
-        for num, var in sorted([(num,var) for var,num in varMap.items()]):
-            f.write('c %5d %s\n' % (num, var))
     with open('variables.txt', 'w') as f:
         # dicts are hashed, so 'normal' order is not very nice
         for num, var in sorted([(num,var) for var,num in varMap.items()]):
