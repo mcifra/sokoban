@@ -12,6 +12,7 @@ class SokobanSolver(object):
     LIMIT = 10
 
     def __init__(self, map_name):
+        self.map_name = map_name
         self.map_data = {}
         self.load_map(map_name)
         self.coords = self.generate_coords()
@@ -77,6 +78,7 @@ class SokobanSolver(object):
 
     def encode_iteration(self, iteration):
         self.theory.new_iteration()
+        self.theory.writeComment('Map: {}'.format(self.map_name))
         self.encode_goal(iteration)
         self.encode_init_state()
         for step in range(1, iteration+1):
