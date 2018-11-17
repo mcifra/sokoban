@@ -18,3 +18,11 @@
 
 7 Vykonat sa musi najviac jedna akcia
   -move(00,01) or -move(00,02)
+
+goal(N) -> (in_target(box1,0) or in_target(box1,1) or ...) and ((in_target(box2,0) or in_target(box2,1) or ...)) and ...
+
+-goal(N) or in_target(box1,0) or in_target(box1,1)
+-goal(N) or in_target(box2,0) or in_target(box2,1)
+
+
+at(...,0) and move(...,1) -> at(...,1)

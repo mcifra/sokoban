@@ -4,6 +4,11 @@ class TheoryWriter(object):
         self.fn = filename
         self.f = open(filename, 'w')
 
+    def new_iteration(self):
+        if not self.closed():
+            self.f.close()
+        self.f = open(self.fn, 'w')
+
     def filename(self):
         """ Returns the filename that this writer writes to as a string."""
         return self.fn
