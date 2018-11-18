@@ -17,7 +17,7 @@ class SokobanSolver(object):
         self.load_map(map_name)
         self.coords = self.generate_coords()
         self.theory = TheoryWriter(self.CNF_FILE)
-
+    
     def set_limit(self, limit):
         self.LIMIT = limit
 
@@ -179,12 +179,6 @@ class SokobanSolver(object):
                         self.neg(self.move(fromXY, toXY, step)),
                         self.empty(fromXY, step)
                     ])
-                    # E-
-                    for box_id in range(len(self.map_data['boxes'])):
-                        self.theory.writeClause([
-                            self.neg(self.move(fromXY, toXY, step)),
-                            self.neg(self.in_target(box_id+1, step))
-                        ])
 
     def action_push(self, step):
         self.theory.writeComment('Action push(box, playerXY, fromXY, toXY, step)')
@@ -220,27 +214,14 @@ class SokobanSolver(object):
                                 self.neg(self.push(box_id+1, playerXY, fromXY, toXY, step)),
                                 self.at(box_id+1, toXY, step)
                             ])
-
-                            for XY in self.coords:
-                                if self.not_wall(XY) and XY != toXY:
-                                    self.theory.writeClause([
-                                        self.neg(self.push(box_id+1, playerXY, fromXY, toXY, step)),
-                                        self.neg(self.at(box_id+1, XY, step))
-                                    ])
-
                             self.theory.writeClause([
                                 self.neg(self.push(box_id+1, playerXY, fromXY, toXY, step)),
                                 self.empty(playerXY, step)
                             ])
                             self.theory.writeClause([
                                 self.neg(self.push(box_id+1, playerXY, fromXY, toXY, step)),
-                                self.neg(self.in_target(box_id+1, step-1))
+                                self.neg(self.in_target(box_id+1, step))
                             ])
-                            for box_id2 in range(len(self.map_data['boxes'])):
-                                self.theory.writeClause([
-                                    self.neg(self.push(box_id+1, playerXY, fromXY, toXY, step)),
-                                    self.neg(self.in_target(box_id2+1, step))
-                                ])
                             
 
     def action_push_t(self, step):
@@ -267,6 +248,7 @@ class SokobanSolver(object):
                                 self.neg(self.push_t(box_id+1, playerXY, fromXY, toXY, step)),
                                 self.target(toXY)
                             ])
+                            # P-
                             self.theory.writeClause([
                                 self.neg(self.push_t(box_id+1, playerXY, fromXY, toXY, step)),
                                 self.neg(self.in_target(box_id+1, step-1))
@@ -288,16 +270,10 @@ class SokobanSolver(object):
                                 self.neg(self.push_t(box_id+1, playerXY, fromXY, toXY, step)),
                                 self.in_target(box_id+1, step)
                             ])
-                            # E-
-                            for box_id2 in range(len(self.map_data['boxes'])):
-                                if box_id != box_id2:
-                                    self.theory.writeClause([
-                                        self.neg(self.push_t(box_id+1, playerXY, fromXY, toXY, step)),
-                                        self.neg(self.in_target(box_id2+1, step))
-                                    ])
 
     def frame_problem(self, step):
-        self.theory.writeComment('Frame problem')
+        self.theory.writeComment('Frame 1 - ak sa hrac posunie, nezmeni sa poloha boxov')
+        self.theory.writeComment('Frame 2 - ak sa hrac posunie, boxy ktore boli/neboli v cieli zostanu/nebudu v cieli')
         for box_id in range(len(self.map_data['boxes'])):
             for boxXY in self.coords:
                 for fromXY in self.coords:
@@ -308,6 +284,18 @@ class SokobanSolver(object):
                                 self.neg(self.move(fromXY, toXY, step)),
                                 self.at(box_id+1, boxXY, step)
                             ])
+                            self.theory.writeClause([
+                                self.neg(self.in_target(box_id+1, step-1)),
+                                self.neg(self.move(fromXY, toXY, step)),
+                                self.in_target(box_id+1, step),
+                            ])
+                            self.theory.writeClause([
+                                self.in_target(box_id+1, step-1),
+                                self.neg(self.move(fromXY, toXY, step)),
+                                self.neg(self.in_target(box_id+1, step)),
+                            ])
+        self.theory.writeComment('Frame 3 - ak sa posunie nejaky box, ostatne boxy sa neposunu')
+        self.theory.writeComment('Frame 4 - ak sa posunie nejaky box, a ak nejaky iny je/nieje v cieli tak zostane/nebude v cieli')
         for box_id in range(len(self.map_data['boxes'])):
             for boxXY in self.coords:
                 for box_id2 in range(len(self.map_data['boxes'])):
@@ -326,13 +314,32 @@ class SokobanSolver(object):
                                             self.neg(self.push_t(box_id2+1, playerXY, fromXY, toXY, step)),
                                             self.at(box_id+1, boxXY, step)
                                         ])
+                                        self.theory.writeClause([
+                                            self.neg(self.in_target(box_id+1, step-1)),
+                                            self.neg(self.push(box_id2+1, playerXY, fromXY, toXY, step)),
+                                            self.in_target(box_id+1, step)
+                                        ])
+                                        self.theory.writeClause([
+                                            self.neg(self.in_target(box_id+1, step-1)),
+                                            self.neg(self.push_t(box_id2+1, playerXY, fromXY, toXY, step)),
+                                            self.in_target(box_id+1, step)
+                                        ])
+                                        self.theory.writeClause([
+                                            self.in_target(box_id+1, step-1),
+                                            self.neg(self.push(box_id2+1, playerXY, fromXY, toXY, step)),
+                                            self.neg(self.in_target(box_id+1, step))
+                                        ])
+                                        self.theory.writeClause([
+                                            self.in_target(box_id+1, step-1),
+                                            self.neg(self.push_t(box_id2+1, playerXY, fromXY, toXY, step)),
+                                            self.neg(self.in_target(box_id+1, step))
+                                        ])
+
 
     def encode_goal(self, step):
         self.theory.writeComment('Goal')
         for box_id in range(len(self.map_data['boxes'])):
-            for i in range(step + 1):
-                self.theory.writeLiteral(self.in_target(box_id+1, i))
-            self.theory.finishClause()
+            self.theory.writeClause([self.in_target(box_id+1, step)])
 
     def encode_init_state(self):
         self.theory.writeComment('Initial state loaded from the map')
