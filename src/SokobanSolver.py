@@ -18,6 +18,9 @@ class SokobanSolver(object):
         self.coords = self.generate_coords()
         self.theory = TheoryWriter(self.CNF_FILE)
 
+    def set_limit(self, limit):
+        self.LIMIT = limit
+
     def solve(self):
         solution_found = False
         iteration = 1
