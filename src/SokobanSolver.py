@@ -408,12 +408,6 @@ class SokobanSolver(object):
     def in_target(self, box_id, step):
         return 'in_target(box{},{})'.format(box_id, step)
 
-    def goal(self, N):
-        return 'goal({})'.format(N)
-
-    def wall(self, XY):
-        return 'wall({}_{})'.format(XY[0], XY[1])
-
     def neg(self, predicate):
         return '-' + predicate
 
