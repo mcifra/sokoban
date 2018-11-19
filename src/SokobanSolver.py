@@ -9,7 +9,7 @@ class SokobanSolver(object):
     DIMACS_FILE = 'dimacs.txt'
     DIMACS_VARS_FILE = 'variables.txt'
     MINISAT_OUT_FILE = 'out.txt'
-    LIMIT = 10
+    LIMIT = 20
 
     def __init__(self, map_name):
         self.map_name = map_name
