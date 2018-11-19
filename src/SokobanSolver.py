@@ -87,15 +87,11 @@ class SokobanSolver(object):
         for step in range(1, iteration+1):
             self.theory.writeComment('RULES - STEP {}'.format(step))
             self.theory.writeComment('Na jednom policku moze byt bud hrac alebo nic alebo nejaky z boxov')
-            self.theory.writeComment('Na polickach kde je stena nemoze byt hrac ani box - su stale ne-prazdne')
             for XY in self.coords:
-                if self.not_wall(XY):
-                    clause = [self.empty(XY, step), self.player(XY, step)]
-                    for box_id in range(len(self.map_data['boxes'])):
-                        clause.append(self.at(box_id+1, XY, step))
-                    self.theory.writeClause(clause)
-                else:
-                    self.theory.writeClause([self.neg(self.empty(XY, step))])
+                clause = [self.empty(XY, step), self.player(XY, step)]
+                for box_id in range(len(self.map_data['boxes'])):
+                    clause.append(self.at(box_id+1, XY, step))
+                self.theory.writeClause(clause)
             self.player_exlusivity(step)
             self.box_exclusivity(step)
             self.position_exclusivity(step)
@@ -106,30 +102,27 @@ class SokobanSolver(object):
         for box_id in range(len(self.map_data['boxes'])):
             for c1 in range(len(self.coords)):
                 for c2 in range(c1+1, len(self.coords)):
-                    if self.not_wall(self.coords[c1], self.coords[c2]):
-                        self.theory.writeClause([
-                            self.neg(self.at(box_id+1, self.coords[c1], step)),
-                            self.neg(self.at(box_id+1, self.coords[c2], step))
-                        ])
+                    self.theory.writeClause([
+                        self.neg(self.at(box_id+1, self.coords[c1], step)),
+                        self.neg(self.at(box_id+1, self.coords[c2], step))
+                    ])
 
     def player_exlusivity(self, step):
         self.theory.writeComment('Ak je hrac na nejakej pozicii, nemoze byt zaroven na druhej pozicii')
         for c1 in range(len(self.coords)):
             for c2 in range(c1 + 1, len(self.coords)):
-                if self.not_wall(self.coords[c1], self.coords[c2]):
-                    self.theory.writeClause([
-                        self.neg(self.player(self.coords[c1], step)),
-                        self.neg(self.player(self.coords[c2], step))
-                    ])
+                self.theory.writeClause([
+                    self.neg(self.player(self.coords[c1], step)),
+                    self.neg(self.player(self.coords[c2], step))
+                ])
 
     def position_exclusivity(self, step):
         self.theory.writeComment('Na jednom policku moze byt maximalne bud hrac, nic, box')
         for XY in self.coords:
-            if self.not_wall(XY):
-                self.theory.writeClause([self.neg(self.player(XY, step)), self.neg(self.empty(XY, step))])
-                for box_id in range(len(self.map_data['boxes'])):
-                    self.theory.writeClause([self.neg(self.player(XY, step)), self.neg(self.at(box_id+1, XY, step))])
-                    self.theory.writeClause([self.neg(self.empty(XY, step)), self.neg(self.at(box_id+1, XY, step))])
+            self.theory.writeClause([self.neg(self.player(XY, step)), self.neg(self.empty(XY, step))])
+            for box_id in range(len(self.map_data['boxes'])):
+                self.theory.writeClause([self.neg(self.player(XY, step)), self.neg(self.at(box_id+1, XY, step))])
+                self.theory.writeClause([self.neg(self.empty(XY, step)), self.neg(self.at(box_id+1, XY, step))])
 
     def actions(self, step):
         self.action_move(step)
@@ -138,13 +131,13 @@ class SokobanSolver(object):
         actions = []
         for fromXY in self.coords:
             for toXY in self.coords:
-                if self.is_adjacent(fromXY, toXY) and self.not_wall(fromXY, toXY):
+                if self.is_adjacent(fromXY, toXY):
                     actions.append(self.move(fromXY, toXY, step))
         for box_id in range(len(self.map_data['boxes'])):
             for playerXY in self.coords:
                 for fromXY in self.coords:
                     for toXY in self.coords:
-                        if self.is_inline(playerXY, fromXY, toXY) and self.not_wall(playerXY, fromXY, toXY):
+                        if self.is_inline(playerXY, fromXY, toXY):
                             actions.append(self.push(box_id+1, playerXY, fromXY, toXY, step))
                             actions.append(self.push_t(box_id+1, playerXY, fromXY, toXY, step))
         self.theory.writeComment('At least one action happens')
@@ -160,7 +153,7 @@ class SokobanSolver(object):
         self.theory.writeComment('Action move(fromXY, toXY, step)')
         for fromXY in self.coords:
             for toXY in self.coords:
-                if self.is_adjacent(fromXY, toXY) and self.not_wall(fromXY, toXY):
+                if self.is_adjacent(fromXY, toXY):
                     # P+
                     self.theory.writeClause([
                         self.neg(self.move(fromXY, toXY, step)),
@@ -186,7 +179,7 @@ class SokobanSolver(object):
             for playerXY in self.coords:
                 for fromXY in self.coords:
                     for toXY in self.coords:
-                        if self.is_inline(playerXY, fromXY, toXY) and self.not_wall(playerXY, fromXY, toXY):
+                        if self.is_inline(playerXY, fromXY, toXY):
                             # P+
                             self.theory.writeClause([
                                 self.neg(self.push(box_id+1, playerXY, fromXY, toXY, step)),
@@ -230,7 +223,7 @@ class SokobanSolver(object):
             for playerXY in self.coords:
                 for fromXY in self.coords:
                     for toXY in self.coords:
-                        if self.is_inline(playerXY, fromXY, toXY) and self.not_wall(playerXY, fromXY, toXY):
+                        if self.is_inline(playerXY, fromXY, toXY):
                             # P+
                             self.theory.writeClause([
                                 self.neg(self.push_t(box_id+1, playerXY, fromXY, toXY, step)),
@@ -278,7 +271,7 @@ class SokobanSolver(object):
             for boxXY in self.coords:
                 for fromXY in self.coords:
                     for toXY in self.coords:
-                        if self.is_adjacent(fromXY, toXY) and self.not_wall(boxXY, fromXY, toXY):
+                        if self.is_adjacent(fromXY, toXY):
                             self.theory.writeClause([
                                 self.neg(self.at(box_id+1, boxXY, step-1)),
                                 self.neg(self.move(fromXY, toXY, step)),
@@ -303,7 +296,7 @@ class SokobanSolver(object):
                         for playerXY in self.coords:
                             for fromXY in self.coords:
                                 for toXY in self.coords:
-                                    if self.is_inline(playerXY, fromXY, toXY) and self.not_wall(boxXY, playerXY, fromXY, toXY):
+                                    if self.is_inline(playerXY, fromXY, toXY):
                                         self.theory.writeClause([
                                             self.neg(self.at(box_id+1, boxXY, step-1)),
                                             self.neg(self.push(box_id2+1, playerXY, fromXY, toXY, step)),
@@ -346,41 +339,34 @@ class SokobanSolver(object):
         self.theory.writeComment('Targets on the map (fact)')
         for XY in self.coords:
             if XY in self.map_data['targets']:
-                self.theory.writeLiteral(self.target(XY))    
+                self.theory.writeClause([self.target(XY)])    
             else:
-                self.theory.writeLiteral(self.neg(self.target(XY)))
-            self.theory.finishClause()
+                self.theory.writeClause([self.neg(self.target(XY))])
         self.theory.writeComment('Initial position of the player loaded from the map')
         for XY in self.coords:
             if XY == self.map_data['sokoban']:
-                self.theory.writeLiteral(self.player(XY, 0))
+                self.theory.writeClause([self.player(XY, 0)])
             else:
-                self.theory.writeLiteral(self.neg(self.player(XY, 0)))
-            self.theory.finishClause()
+                self.theory.writeClause([self.neg(self.player(XY, 0))])
         self.theory.writeComment('Initial boxes position loaded from the map')
         for XY in self.coords:
             for index, box in enumerate(self.map_data['boxes']):
                 if XY == box:
-                    self.theory.writeLiteral(self.at(index+1, XY, 0))
+                    self.theory.writeClause([self.at(index+1, XY, 0)])
                 else:
-                    self.theory.writeLiteral(self.neg(self.at(index+1, XY, 0)))
-                self.theory.finishClause()
+                    self.theory.writeClause([self.neg(self.at(index+1, XY, 0))])
         self.theory.writeComment('Boxes in the target')
         for index, box in enumerate(self.map_data['boxes']):
             if box in self.map_data['targets']:
-                self.theory.writeLiteral(self.in_target(index+1, 0))
+                self.theory.writeClause([self.in_target(index+1, 0)])
             else:
-                self.theory.writeLiteral(self.neg(self.in_target(index+1, 0)))
-            self.theory.finishClause()
+                self.theory.writeClause([self.neg(self.in_target(index+1, 0))])
         self.theory.writeComment('Initial empty squares loaded from the map')
         for XY in self.coords:
-            if (XY not in self.map_data['walls'] and
-                XY not in self.map_data['boxes'] and
-                    XY != self.map_data['sokoban']):
-                self.theory.writeLiteral(self.empty(XY, 0))
+            if XY not in self.map_data['boxes'] and XY != self.map_data['sokoban']:
+                self.theory.writeClause([self.empty(XY, 0)])
             else:
-                self.theory.writeLiteral(self.neg(self.empty(XY, 0)))
-            self.theory.finishClause()
+                self.theory.writeClause([self.neg(self.empty(XY, 0))])
 
     def push(self, box_id, playerXY, fromXY, toXY, step):
         return ('push(box{},{}_{},{}_{},{}_{},{})'
@@ -443,7 +429,8 @@ class SokobanSolver(object):
         coords = []
         for x in range(self.map_data['map_size'][0]):
             for y in range(self.map_data['map_size'][1]):
-                coords.append((x, y))
+                if (x, y) not in self.map_data['walls']:
+                    coords.append((x, y))
         return coords
 
     def is_inline(self, playerXY, fromXY, toXY):
@@ -466,13 +453,7 @@ class SokobanSolver(object):
             return True
         if c1[1] == c2[1] and c1[0] == c2[0]-1:
             return True
-        return False
-
-    def not_wall(self, *coords):
-        for coord in coords:
-            if coord in self.map_data['walls']:
-                return False
-        return True
+        return False 
 
 
 if __name__ == "__main__":
